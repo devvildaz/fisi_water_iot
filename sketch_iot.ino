@@ -1,7 +1,9 @@
 #include <ArduinoJson.h>
 #include <string.h>
 #include "Adafruit_Keypad.h"
-#include <SoftwareSerial.h>
+#include <TinyGPS++.h>
+
+#include <AltSoftSerial.h>
 
 #define USONIC_PING 3
 #define USONIC_ECHO 2
@@ -30,29 +32,48 @@ bool up = false;
 
 long duration, inches, cm;
 
-SoftwareSerial gpsSerial(13,12);
+TinyGPSPlus gps;
+AltSoftSerial SoftSerial;
+
+struct {
+  double lati = 0.0;
+  double lon = 0.0;
+  double alt = 0.0;
+  double percentage = -1.0;
+} infoStruct;
 
 void setup() {
-  mode = CONFIG;
+  mode = RUNNING;
   BUFF_HEIGHT[3] = '\0';
-  Serial.begin(19200);
-  gpsSerial.begin(9600);
+  SoftSerial.begin(9600);
+  Serial.begin(38400);  
   customKeypad.begin();
 }
+
+
 
 void loop() {
   switch(mode){
     case CONFIG: 
-      triggerSignal();
+      // keypad configuration
       break;
     case RUNNING: 
-      Serial.println(gpsSerial.available());
-      while(gpsSerial.available() > 0){
-        char c = gpsSerial.read();
-        Serial.print(c);
+      displayInfo();
+      triggerSignal();
+      
+      if (infoStruct.lati != 0.0 && infoStruct.lon != 0.0 && infoStruct.alt != 0.0 && (infoStruct.percentage >= 0.0)) {
+        Serial.print("Lat: ");
+        Serial.println(infoStruct.lati);
+        Serial.print("Lon: ");
+        Serial.println(infoStruct.lon);
+        Serial.print("Alt: ");
+        Serial.println(infoStruct.alt);
+        Serial.print("Percentage: ");
+        Serial.println(infoStruct.percentage);
+        Serial.println();
+        Serial.println();
+        delay(1500);
       }
-      Serial.println();
-      delay(10);
       break;
     case FAILED: 
       break;
@@ -89,10 +110,39 @@ void triggerSignal() {
   duration = pulseIn(USONIC_ECHO, HIGH);
   cm = microsecondsToCentimeters(duration);
   percentage= (1.0 - cm/TOTAL_HEIGHT)*100.0;
-  Serial.print(percentage < 0.0? 0.0: percentage );
-  Serial.print("%");
-  Serial.println();
-  delay(500);
+  if(percentage < 0.0){
+    infoStruct.percentage = 0.0;
+  } else {
+    infoStruct.percentage = percentage;
+  }
+  //infoStruct.percentage = percentage < 0.0? 0.0: percentage;
+  // Serial.println(infoStruct.percentage);
+  // Serial.print("Percentage: ");
+  // Serial.print(percentage < 0.0? 0.0: percentage );
+  //infoStruct.percentage = percentage;
+  //Serial.print("%");
+  // Serial.println();
+}
+
+void displayInfo() {
+ 
+  while (SoftSerial.available() > 0) {
+ 
+    if (gps.encode(SoftSerial.read())) {
+ 
+      if (gps.location.isValid()) {
+        infoStruct.lati = gps.location.lat();
+        infoStruct.lon = gps.location.lng();
+      }
+      
+ 
+      if (gps.altitude.isValid()) {
+        infoStruct.alt = gps.altitude.meters();
+      }
+      
+    }
+  }
+  
 }
 
 
